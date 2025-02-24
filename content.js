@@ -1,5 +1,6 @@
-// Import the API key from the environment variables
 const API_KEY = process.env.API_KEY;
+
+console.log("Content script loaded");
 
 async function fetchSuggestion(prompt) {
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateText?key=${API_KEY}`;
@@ -18,6 +19,7 @@ async function fetchSuggestion(prompt) {
     });
 
     const data = await response.json();
+    console.log("API Response:", data);
     if (data && data.candidates && data.candidates.length > 0) {
       return data.candidates[0].output;
     }
@@ -44,8 +46,10 @@ document.addEventListener(
     const target = event.target;
     if (target.tagName === "TEXTAREA" || target.isContentEditable) {
       const text = target.value || target.innerText;
+      console.log("Detected input:", text);
       if (text.trim().length > 0) {
         const suggestion = await fetchSuggestion(text);
+        console.log("Suggestion:", suggestion);
         insertSuggestion(target, suggestion);
       }
     }
