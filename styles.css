@@ -1,0 +1,12 @@
+.suggestion-box {
+  position: absolute;
+  background: rgba(0, 0, 0, 0.8);
+  color: blue;
+  padding: 5px;
+  border-radius: 4px;
+  font-size: 14px;
+  max-width: 300px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

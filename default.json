@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "AI Autocomplete",
+  "version": "1.0",
+  "description": "An AI-powered autocomplete extension that suggests text completions in input fields.",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["https://*/*", "http://*/*"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "action": {
+    "default_popup": "extension.html",
+    "default_icon": {
+      "16": "icon.png",
+      "48": "icon.png",
+      "128": "icon.png"
+    }
+  },
+  "icons": {
+    "16": "icon.png",
+    "48": "icon.png",
+    "128": "icon.png"
+  }
+}
