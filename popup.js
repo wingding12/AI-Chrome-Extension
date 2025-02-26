@@ -13,6 +13,7 @@ document.getElementById("toggleAI").addEventListener("click", async () => {
     });
 
     // Update the button text after toggling
+    // !!
     updateButtonText();
   } else {
     alert("AI Autocomplete cannot be enabled on this page.");
