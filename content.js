@@ -1,4 +1,4 @@
-let API_KEY = "AIzaSyBhZCGZOZbIa3mV9H6a3d91TDyFGkeXLfU"; // Hardcoded API key
+let API_KEY = /* input your Google Gemini API key */; // Hardcoded API key
 
 // Attempt to get API key from storage at start
 chrome.storage.sync.get(["apiKey"], function (result) {
