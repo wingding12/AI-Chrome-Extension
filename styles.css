@@ -1,3 +1,23 @@
+.ai-autocomplete-loading {
+  background-image: linear-gradient(
+    to right,
+    transparent 0%,
+    rgba(26, 115, 232, 0.1) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: loading-pulse 1.5s infinite;
+}
+
+@keyframes loading-pulse {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: 0 0;
+  }
+}
+
 .suggestion-box {
   position: absolute;
   background: rgba(0, 0, 0, 0.8);
@@ -9,4 +29,20 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.ai-suggestion-overlay {
+  position: absolute;
+  pointer-events: none; /* Allow clicking through */
+  z-index: 9999;
+  opacity: 0.9; /* Increased from 0.7 */
+  transition: opacity 0.2s ease;
+}
+
+.suggestion-text {
+  color: #555; /* Darker text for better visibility */
+  background-color: rgba(255, 255, 255, 0.9); /* More opaque background */
+  border-radius: 2px;
+  padding: 1px 2px; /* Add some padding */
+  border-left: 2px solid #1a73e8; /* Add a blue indicator */
 }
