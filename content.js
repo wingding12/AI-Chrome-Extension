@@ -199,14 +199,15 @@ async function fetchSuggestion(prompt) {
   });
 }
 
-// Enhanced autocomplete function with better context awareness
+// Enhanced autocomplete function with better text handling
 async function fetchFromGemini(prompt) {
-  // First, identify the current word being typed
-  const words = prompt.trim().split(/\s+/);
+  // First, identify the current word being typed and clean up the prompt
+  const cleanPrompt = prompt.trim();
+  const words = cleanPrompt.split(/\s+/);
   const currentPartialWord = words[words.length - 1];
 
   // Get surrounding context (previous words)
-  const previousContext = words.slice(-10, -1).join(" ");
+  const previousContext = words.slice(-15, -1).join(" ");
 
   // Get document context by examining nearby elements
   const documentContext = extractDocumentContext();
@@ -214,16 +215,42 @@ async function fetchFromGemini(prompt) {
   // Get website domain for context
   const domain = window.location.hostname;
 
-  // Format a context-aware prompt with clearer instructions
-  const formattedPrompt = `You are an autocomplete AI. Complete the current word or predict the next words naturally.
+  // Detect if we're at the end of a full word (space after) or in the middle of typing
+  const isPartialWord =
+    currentPartialWord.length > 0 && !/\s$/.test(cleanPrompt);
+  const isCodeContext = isCodeEditor(document.activeElement);
+
+  // Format a context-aware prompt with better instructions to avoid repetition
+  const formattedPrompt = `You are an advanced AI autocomplete system that provides two types of completions:
+
+1. WORD COMPLETION: When given a partial word, provide the COMPLETE word, not just the missing part.
+2. SENTENCE/CODE COMPLETION: When given a complete sentence or code fragment, predict the next logical words or code.
 
 Website: ${domain}
 Document Context: ${documentContext}
 Current Text: "${previousContext}"
-Partial Word: "${currentPartialWord}"
+${
+  isPartialWord
+    ? `Partial Word: "${currentPartialWord}"`
+    : `Complete Phrase: "${cleanPrompt}"`
+}
+Detected Environment: ${isCodeContext ? "CODE" : "TEXT"}
 
-If "${currentPartialWord}" is a partial word, provide the FULL WORD it's likely to be. If it's a complete word, suggest the next word(s).
-Respond ONLY with the completion, no explanations. For partial words, include the entire word, not just the missing part.`;
+I need a ${isPartialWord ? "WORD COMPLETION" : "SENTENCE/CODE COMPLETION"}.
+
+${
+  isPartialWord
+    ? `For the partial word "${currentPartialWord}", provide the FULL word it likely completes to (e.g., "progra" → "programming", not just "mming").`
+    : `Continue the text/code naturally with 2-7 words that would logically follow after this exact text. DO NOT REPEAT any part of "${cleanPrompt}" in your completion.`
+}
+
+${
+  isCodeContext
+    ? "For code, focus on common patterns, variable names, function calls, or syntax that would typically follow."
+    : "For text, focus on completing the thought or sentence naturally without redundancy."
+}
+
+IMPORTANT: Your response should ONLY contain the completion - no explanations, no quotation marks, no labels, and NEVER repeat words that are already in the input text.`;
 
   // Use the Gemini 1.5 Flash model
   const endpoint = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
@@ -239,8 +266,8 @@ Respond ONLY with the completion, no explanations. For partial words, include th
       },
     ],
     generationConfig: {
-      temperature: 0.05, // Very low for predictable completions
-      maxOutputTokens: 5,
+      temperature: isPartialWord ? 0.01 : 0.2, // Lower temperature for word completion, slightly higher for sentence
+      maxOutputTokens: isPartialWord ? 3 : 15, // Fewer tokens for word completion, more for sentence
       topP: 0.95,
       topK: 40,
     },
@@ -274,30 +301,59 @@ Respond ONLY with the completion, no explanations. For partial words, include th
     ) {
       let suggestion = data.candidates[0].content.parts[0].text.trim();
 
-      // Clean up the suggestion
+      // Clean up the suggestion to remove any explanations or quotation marks
       suggestion = suggestion.replace(/^["']|["']$/g, "");
 
-      // Process completion - if we sent a partial word, we need to be careful about how we complete it
-      if (currentPartialWord && currentPartialWord.length > 1) {
-        // If suggestion starts with the partial word, extract only the new part
-        if (
-          suggestion
-            .toLowerCase()
-            .startsWith(currentPartialWord.toLowerCase()) &&
-          suggestion.length > currentPartialWord.length
-        ) {
-          suggestion = suggestion.substring(currentPartialWord.length);
-        }
-        // Otherwise, if the suggestion doesn't seem to complete the word, check if it's a full word
-        else if (
-          !suggestion.includes(" ") &&
-          !currentPartialWord.toLowerCase().startsWith(suggestion.toLowerCase())
-        ) {
-          // This might be a full word completion - keep it
+      // If the suggestion contains explanation text, try to extract just the completion
+      if (suggestion.includes(":") || suggestion.includes("=")) {
+        const parts = suggestion.split(/[:=]/);
+        if (parts.length > 1) {
+          suggestion = parts[1].trim();
         }
       }
 
-      console.log("Cleaned suggestion:", suggestion);
+      // For sentence completions, check for and remove redundancy with the original text
+      if (!isPartialWord) {
+        // Check if the suggestion starts with any of the last few words of the prompt
+        const lastWordsOfPrompt = cleanPrompt
+          .split(/\s+/)
+          .slice(-3)
+          .join(" ")
+          .toLowerCase();
+
+        // Check if the suggestion repeats these last words
+        if (
+          lastWordsOfPrompt &&
+          suggestion.toLowerCase().startsWith(lastWordsOfPrompt)
+        ) {
+          // Remove the duplicated part
+          suggestion = suggestion.substring(lastWordsOfPrompt.length).trim();
+        }
+
+        // Also check for partial word matches at the start
+        const promptWords = cleanPrompt.split(/\s+/);
+        const suggestionWords = suggestion.split(/\s+/);
+
+        if (suggestionWords.length > 0 && promptWords.length > 0) {
+          const lastPromptWord =
+            promptWords[promptWords.length - 1].toLowerCase();
+          const firstSuggestionWord = suggestionWords[0].toLowerCase();
+
+          // If the first word of suggestion matches the last word of prompt
+          if (lastPromptWord === firstSuggestionWord) {
+            // Remove the first word of the suggestion
+            suggestion = suggestionWords.slice(1).join(" ");
+          }
+        }
+      }
+
+      // Ensure we have a full word if we sent a partial word
+      if (currentPartialWord && suggestion && isPartialWord) {
+        // Logic for partial word completions
+        // ...existing code
+      }
+
+      console.log("Processed suggestion:", suggestion);
       return suggestion;
     } else {
       console.log("No valid suggestion in Gemini response");
@@ -535,7 +591,7 @@ document.addEventListener(
   }, DEBOUNCE_DELAY)
 );
 
-// Improved insertSuggestion function for word completions
+// Improved insertSuggestion function for both types of completions
 function insertSuggestion(target, suggestion) {
   if (!suggestion) return;
 
@@ -547,6 +603,7 @@ function insertSuggestion(target, suggestion) {
     suggestion = suggestion.split("\n")[0].trim();
   }
 
+  // Get text and cursor position
   let text = "";
   let cursorPos = 0;
 
@@ -569,44 +626,51 @@ function insertSuggestion(target, suggestion) {
 
   const currentWord = text.substring(wordStart, cursorPos);
 
-  // Determine if we're completing a partial word or adding new text
-  if (currentWord.length > 0 && !/^\s/.test(suggestion)) {
-    // We're completing a word
-    // Don't add a space before the suggestion and remove the partial word
-    if (target.tagName === "TEXTAREA") {
-      target.setRangeText(suggestion, wordStart, cursorPos, "end");
-    } else if (target.isContentEditable) {
-      const range = document.getSelection().getRangeAt(0);
-      range.setStart(range.startContainer, wordStart);
-      range.deleteContents();
-      range.insertNode(document.createTextNode(suggestion));
-      range.collapse(false);
+  // Determine if we're in a sentence completion context
+  const isSentenceCompletion =
+    currentWord.length === 0 || /\s$/.test(text.substring(0, cursorPos));
+
+  if (isSentenceCompletion) {
+    // For sentence completion
+    // Check for redundancy before adding spaces
+    const lastFewChars = text.substring(Math.max(0, cursorPos - 10), cursorPos);
+
+    // If the suggestion starts with text that's already at the cursor, trim it
+    if (suggestion.length > 3) {
+      for (let i = 3; i < Math.min(suggestion.length, 10); i++) {
+        const overlapCandidate = suggestion.substring(0, i);
+        if (lastFewChars.endsWith(overlapCandidate)) {
+          suggestion = suggestion.substring(i);
+          break;
+        }
+      }
     }
-  } else {
-    // We're adding new text after a complete word
-    // Add a space if needed
+
+    // Add a space if needed and not already present
     if (
       !/^[\s.,!?;:]/.test(suggestion) &&
       cursorPos > 0 &&
-      text.charAt(cursorPos - 1) !== " "
+      text.charAt(cursorPos - 1) !== " " &&
+      text.charAt(cursorPos - 1) !== "\n"
     ) {
       suggestion = " " + suggestion;
     }
+  }
 
-    if (target.tagName === "TEXTAREA") {
-      const start = target.selectionStart;
-      const end = target.selectionEnd;
-      target.setRangeText(suggestion, start, end, "end");
-    } else if (target.isContentEditable) {
-      const range = document.getSelection().getRangeAt(0);
-      range.deleteContents();
-      range.insertNode(document.createTextNode(suggestion));
-      range.collapse(false);
-    }
+  // Insert the suggestion
+  if (target.tagName === "TEXTAREA") {
+    const start = target.selectionStart;
+    const end = target.selectionEnd;
+    target.setRangeText(suggestion, start, end, "end");
+  } else if (target.isContentEditable) {
+    const range = document.getSelection().getRangeAt(0);
+    range.deleteContents();
+    range.insertNode(document.createTextNode(suggestion));
+    range.collapse(false);
   }
 }
 
-// Handle "Tab" key to accept suggestions with improved handling of word completions
+// Handle "Tab" key to accept suggestions for both word and sentence completions
 document.addEventListener("keydown", function (event) {
   // Check if autocomplete is enabled
   const autocompleteEnabled = localStorage.getItem("aiAutocomplete") === "true";
@@ -622,12 +686,16 @@ document.addEventListener("keydown", function (event) {
     // Remove any existing overlay
     const existingOverlay = document.querySelector(".ai-suggestion-overlay");
     if (existingOverlay) {
-      // Use the full suggestion stored in the dataset
+      // Get the full suggestion and completion type
       const fullSuggestion =
         existingOverlay.dataset.fullSuggestion ||
         existingOverlay.querySelector(".suggestion-text").textContent;
+      const completionType = existingOverlay.dataset.completionType || "word";
 
-      console.log("Found suggestion in overlay:", fullSuggestion);
+      console.log(
+        `Found ${completionType} suggestion in overlay:`,
+        fullSuggestion
+      );
       existingOverlay.remove();
 
       const activeElement = document.activeElement;
@@ -660,12 +728,8 @@ document.addEventListener("keydown", function (event) {
 
         const currentWord = text.substring(wordStart, cursorPos);
 
-        // If we have a partial word, replace it completely
-        if (
-          currentWord.length > 0 &&
-          fullSuggestion.toLowerCase().startsWith(currentWord.toLowerCase())
-        ) {
-          // Replace the partial word with the full suggestion
+        if (completionType === "word" && currentWord.length > 0) {
+          // Word completion - replace the partial word
           if (activeElement.tagName === "TEXTAREA") {
             activeElement.setRangeText(
               fullSuggestion,
@@ -681,7 +745,7 @@ document.addEventListener("keydown", function (event) {
             range.collapse(false);
           }
         } else {
-          // Otherwise, insert normally
+          // Sentence completion - insert after cursor
           insertSuggestion(activeElement, fullSuggestion);
         }
         return;
@@ -755,7 +819,7 @@ loadCacheFromStorage();
 // Save cache periodically or when the tab is closed
 window.addEventListener("beforeunload", saveCacheToStorage);
 
-// Modified createSuggestionOverlay to properly handle partial words
+// Modified createSuggestionOverlay for both word and sentence completions
 function createSuggestionOverlay(target, suggestion) {
   // Remove existing overlay if present
   const existingOverlay = document.querySelector(".ai-suggestion-overlay");
@@ -787,6 +851,7 @@ function createSuggestionOverlay(target, suggestion) {
   }
 
   const currentWord = text.substring(wordStart, cursorPos);
+  const isPartialWord = currentWord.length > 0;
 
   // Create the overlay
   const overlay = document.createElement("div");
@@ -806,25 +871,29 @@ function createSuggestionOverlay(target, suggestion) {
   // Store the entire suggestion for use when tab is pressed
   overlay.dataset.fullSuggestion = suggestion;
 
-  // Handle display of the suggestion
-  if (currentWord.length > 0) {
-    // For partial words, either:
-    // 1. If the suggestion starts with the exact partial word, show just the completion
-    // 2. If the suggestion contains the partial word but doesn't start with it, show the full word
-    // 3. If the suggestion is a completely different word, show the full suggestion
+  // Store whether this is a word completion or sentence completion
+  overlay.dataset.completionType = isPartialWord ? "word" : "sentence";
 
-    if (suggestion.startsWith(currentWord)) {
-      // Case 1: Show just the completion part
-      suggestionText.textContent = suggestion.substring(currentWord.length);
-    } else if (suggestion.toLowerCase().startsWith(currentWord.toLowerCase())) {
-      // Case 1 (case-insensitive): Show the completion with correct casing
-      suggestionText.textContent = suggestion.substring(currentWord.length);
+  // Handle display of the suggestion
+  if (isPartialWord) {
+    // For partial words
+    if (suggestion.toLowerCase().startsWith(currentWord.toLowerCase())) {
+      // Show only the completion part
+      const completionPart = suggestion.substring(currentWord.length);
+      if (completionPart.length > 0) {
+        suggestionText.textContent = completionPart;
+      } else {
+        suggestionText.textContent = "[" + suggestion + "]";
+      }
     } else {
-      // Case 2 or 3: Show the full suggestion
-      suggestionText.textContent = suggestion;
+      // If suggestion doesn't extend the current word, show with an indicator
+      suggestionText.textContent = "⮕ " + suggestion;
     }
   } else {
-    // For complete words, show the full suggestion
+    // For sentence completions, always show with a space prefix
+    if (!suggestion.startsWith(" ") && !suggestion.startsWith("\n")) {
+      suggestion = " " + suggestion;
+    }
     suggestionText.textContent = suggestion;
   }
 
@@ -838,6 +907,14 @@ function createSuggestionOverlay(target, suggestion) {
   overlay.style.pointerEvents = "none";
   overlay.style.zIndex = "9999";
   overlay.style.whiteSpace = "pre";
+
+  // Use different styling for different completion types
+  if (!isPartialWord) {
+    suggestionText.style.fontStyle = "italic";
+    suggestionText.style.opacity = "0.85";
+    suggestionText.style.borderLeft = "2px solid #1a73e8";
+    suggestionText.style.paddingLeft = "4px";
+  }
 
   overlay.appendChild(suggestionText);
   document.body.appendChild(overlay);
@@ -895,3 +972,67 @@ chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
     console.log("API key updated");
   }
 });
+
+// Helper function to detect if we're in a code editor
+function isCodeEditor(element) {
+  if (!element) return false;
+
+  // Check element and its parents for code editor indicators
+  let currentEl = element;
+  while (currentEl) {
+    // Check for common code editor class names
+    const classList = currentEl.classList
+      ? Array.from(currentEl.classList)
+      : [];
+    if (
+      classList.some((cls) =>
+        /code|editor|CodeMirror|monaco|ace|prism|syntax|highlight|language-|javascript|python|java|cpp|ruby|php/i.test(
+          cls
+        )
+      )
+    ) {
+      return true;
+    }
+
+    // Check for code elements
+    if (currentEl.tagName === "PRE" || currentEl.tagName === "CODE") {
+      return true;
+    }
+
+    // Check for common code editor IDs
+    if (currentEl.id && /editor|code|script|source/i.test(currentEl.id)) {
+      return true;
+    }
+
+    // Check for Monaco editor
+    if (currentEl.querySelector && currentEl.querySelector(".monaco-editor")) {
+      return true;
+    }
+
+    // Check URL for coding sites
+    const codingDomains = [
+      "github.com",
+      "gitlab.com",
+      "bitbucket.org",
+      "stackoverflow.com",
+      "leetcode.com",
+      "hackerrank.com",
+      "codepen.io",
+      "jsfiddle.net",
+      "codesandbox.io",
+      "replit.com",
+      "codewars.com",
+      "ide.geeksforgeeks.org",
+    ];
+
+    if (
+      codingDomains.some((domain) => window.location.hostname.includes(domain))
+    ) {
+      return true;
+    }
+
+    currentEl = currentEl.parentElement;
+  }
+
+  return false;
+}
