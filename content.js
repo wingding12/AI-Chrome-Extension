@@ -199,11 +199,10 @@ async function fetchSuggestion(prompt) {
   });
 }
 
-// Enhanced autocomplete function with better text handling
+// Enhanced autocomplete function with dual-mode completion
 async function fetchFromGemini(prompt) {
-  // First, identify the current word being typed and clean up the prompt
-  const cleanPrompt = prompt.trim();
-  const words = cleanPrompt.split(/\s+/);
+  // First, identify the current word being typed
+  const words = prompt.trim().split(/\s+/);
   const currentPartialWord = words[words.length - 1];
 
   // Get surrounding context (previous words)
@@ -216,11 +215,10 @@ async function fetchFromGemini(prompt) {
   const domain = window.location.hostname;
 
   // Detect if we're at the end of a full word (space after) or in the middle of typing
-  const isPartialWord =
-    currentPartialWord.length > 0 && !/\s$/.test(cleanPrompt);
+  const isPartialWord = currentPartialWord.length > 0 && !/\s$/.test(prompt);
   const isCodeContext = isCodeEditor(document.activeElement);
 
-  // Format a context-aware prompt with better instructions to avoid repetition
+  // Format a context-aware prompt that handles both partial words and sentence completion
   const formattedPrompt = `You are an advanced AI autocomplete system that provides two types of completions:
 
 1. WORD COMPLETION: When given a partial word, provide the COMPLETE word, not just the missing part.
@@ -232,7 +230,7 @@ Current Text: "${previousContext}"
 ${
   isPartialWord
     ? `Partial Word: "${currentPartialWord}"`
-    : `Complete Phrase: "${cleanPrompt}"`
+    : "Last Word: COMPLETE (ready for next word prediction)"
 }
 Detected Environment: ${isCodeContext ? "CODE" : "TEXT"}
 
@@ -241,16 +239,16 @@ I need a ${isPartialWord ? "WORD COMPLETION" : "SENTENCE/CODE COMPLETION"}.
 ${
   isPartialWord
     ? `For the partial word "${currentPartialWord}", provide the FULL word it likely completes to (e.g., "progra" → "programming", not just "mming").`
-    : `Continue the text/code naturally with 2-7 words that would logically follow after this exact text. DO NOT REPEAT any part of "${cleanPrompt}" in your completion.`
+    : `Continue the text/code naturally with 2-7 words that would logically follow after "${prompt}".`
 }
 
 ${
   isCodeContext
     ? "For code, focus on common patterns, variable names, function calls, or syntax that would typically follow."
-    : "For text, focus on completing the thought or sentence naturally without redundancy."
+    : "For text, focus on completing the thought or sentence naturally."
 }
 
-IMPORTANT: Your response should ONLY contain the completion - no explanations, no quotation marks, no labels, and NEVER repeat words that are already in the input text.`;
+RESPOND ONLY with the completion - no explanations, no quotation marks, no labels.`;
 
   // Use the Gemini 1.5 Flash model
   const endpoint = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
@@ -312,48 +310,24 @@ IMPORTANT: Your response should ONLY contain the completion - no explanations, n
         }
       }
 
-      // For sentence completions, check for and remove redundancy with the original text
-      if (!isPartialWord) {
-        // Check if the suggestion starts with any of the last few words of the prompt
-        const lastWordsOfPrompt = cleanPrompt
-          .split(/\s+/)
-          .slice(-3)
-          .join(" ")
-          .toLowerCase();
-
-        // Check if the suggestion repeats these last words
+      // Ensure we have a full word if we sent a partial word
+      if (currentPartialWord && suggestion) {
+        // If the suggestion doesn't already contain the partial word, prepend it
         if (
-          lastWordsOfPrompt &&
-          suggestion.toLowerCase().startsWith(lastWordsOfPrompt)
+          !suggestion.toLowerCase().startsWith(currentPartialWord.toLowerCase())
         ) {
-          // Remove the duplicated part
-          suggestion = suggestion.substring(lastWordsOfPrompt.length).trim();
-        }
-
-        // Also check for partial word matches at the start
-        const promptWords = cleanPrompt.split(/\s+/);
-        const suggestionWords = suggestion.split(/\s+/);
-
-        if (suggestionWords.length > 0 && promptWords.length > 0) {
-          const lastPromptWord =
-            promptWords[promptWords.length - 1].toLowerCase();
-          const firstSuggestionWord = suggestionWords[0].toLowerCase();
-
-          // If the first word of suggestion matches the last word of prompt
-          if (lastPromptWord === firstSuggestionWord) {
-            // Remove the first word of the suggestion
-            suggestion = suggestionWords.slice(1).join(" ");
+          // Only prepend if this looks like we're getting just the completion
+          if (
+            currentPartialWord.toLowerCase() + suggestion.toLowerCase() ===
+            currentPartialWord.toLowerCase() + suggestion.toLowerCase()
+          ) {
+            suggestion = currentPartialWord + suggestion;
           }
         }
       }
 
-      // Ensure we have a full word if we sent a partial word
-      if (currentPartialWord && suggestion && isPartialWord) {
-        // Logic for partial word completions
-        // ...existing code
-      }
-
-      console.log("Processed suggestion:", suggestion);
+      console.log("Partial word:", currentPartialWord);
+      console.log("Cleaned and fixed suggestion:", suggestion);
       return suggestion;
     } else {
       console.log("No valid suggestion in Gemini response");
@@ -480,11 +454,7 @@ function detectLanguage(codeElement) {
 
 // Alternative with a different API
 async function fetchFromAlternativeAPI(prompt) {
-  // Use a different free AI API
-  const endpoint = "https://api.openai.com/v1/completions"; // This would need your own API key
-
-  // Request structure would change based on the selected API
-  // ...
+  const endpoint = "https://api.openai.com/v1/completions";
 }
 
 // Debounce function to limit API calls
@@ -632,20 +602,6 @@ function insertSuggestion(target, suggestion) {
 
   if (isSentenceCompletion) {
     // For sentence completion
-    // Check for redundancy before adding spaces
-    const lastFewChars = text.substring(Math.max(0, cursorPos - 10), cursorPos);
-
-    // If the suggestion starts with text that's already at the cursor, trim it
-    if (suggestion.length > 3) {
-      for (let i = 3; i < Math.min(suggestion.length, 10); i++) {
-        const overlapCandidate = suggestion.substring(0, i);
-        if (lastFewChars.endsWith(overlapCandidate)) {
-          suggestion = suggestion.substring(i);
-          break;
-        }
-      }
-    }
-
     // Add a space if needed and not already present
     if (
       !/^[\s.,!?;:]/.test(suggestion) &&
