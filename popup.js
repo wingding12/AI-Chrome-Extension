@@ -19,6 +19,38 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Default state for non-web pages
     updateButtonUI(false);
   }
+
+  // Setup API key UI
+  document.getElementById("showSettings").addEventListener("click", () => {
+    const section = document.getElementById("apiKeySection");
+    section.style.display =
+      section.style.display === "block" ? "none" : "block";
+  });
+
+  // Load existing API key
+  chrome.storage.sync.get(["apiKey"], function (result) {
+    if (result.apiKey) {
+      document.getElementById("apiKey").value = result.apiKey;
+    }
+  });
+
+  // Save API key
+  document.getElementById("saveApiKey").addEventListener("click", () => {
+    const apiKey = document.getElementById("apiKey").value;
+    chrome.storage.sync.set({ apiKey: apiKey }, function () {
+      alert("API key saved successfully!");
+
+      // Update content script
+      chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+        if (tabs[0]) {
+          chrome.tabs.sendMessage(tabs[0].id, {
+            action: "updateApiKey",
+            key: apiKey,
+          });
+        }
+      });
+    });
+  });
 });
 
 document.getElementById("toggleAI").addEventListener("click", async () => {

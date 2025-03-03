@@ -44,12 +44,46 @@
         outline: none;
         box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.3);
       }
+      .settings {
+        margin-top: 16px;
+        font-size: 12px;
+        color: #5f6368;
+        text-align: center;
+        cursor: pointer;
+      }
+      .settings:hover {
+        text-decoration: underline;
+      }
+      .api-key-section {
+        display: none;
+        margin-top: 16px;
+        border-top: 1px solid #e0e0e0;
+        padding-top: 16px;
+      }
+      input {
+        width: 100%;
+        padding: 8px;
+        margin-bottom: 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+      }
     </style>
   </head>
   <body>
-    <h2>Autocomplete</h2>
+    <h2>AI Autocomplete</h2>
     <p>Click below to enable/disable autocomplete:</p>
     <button id="toggleAI">Enable Autocomplete</button>
+    <div class="settings" id="showSettings">Settings</div>
+    <div class="api-key-section" id="apiKeySection">
+      <input type="text" id="apiKey" placeholder="Enter your Gemini API Key" />
+      <button id="saveApiKey">Save API Key</button>
+      <div
+        class="note"
+        style="font-size: 11px; color: #5f6368; margin-top: 8px"
+      >
+        You can get a Gemini API key from Google AI Studio.
+      </div>
+    </div>
     <script src="popup.js"></script>
   </body>
 </html>
